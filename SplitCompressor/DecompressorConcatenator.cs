@@ -6,24 +6,24 @@ using System.IO.Compression;
 
 namespace SplitCompressor
 {
-    public class DecompressorConcatenator
+    public class DecompressorConcatenator : ParallelTask
     {
         public static int PROCESSOR_COUNT = Environment.ProcessorCount;
 
-        public static void Run(string srcFile, string outFile)
+        public void Run(string srcFile, string outFile)
         {
-            List<ArchivePartSubTask> tasks = new List<ArchivePartSubTask>();
-            List<Action> runnables = new List<Action>();
+            _tasks = new List<ArchivePartSubTask>();
+            _runnables = new List<Action>();
             List<string> comprFilePartPathes = FilePartSubs.GetAllFilePartPathes(srcFile, true);
             foreach (string path in comprFilePartPathes)
             {
                 ArchivePartSubTask task = new DecompressPartSubTask(path, FilePartSubs.FilePathWithoutLastExt(path));
-                tasks.Add(task);
-                runnables.Add(task.Run);
+                _tasks.Add(task);
+                _runnables.Add(task.Run);
             }
-            ParallelRunner runner = new ParallelRunner(runnables, PROCESSOR_COUNT);
-            runner.Start();
-            runner.WaitCompletion();
+            _runner = new ParallelRunner(_runnables, PROCESSOR_COUNT);
+            _runner.Start();
+            _runner.WaitCompletion();
             List<string> filePartPathes = FilePartSubs.GetAllFilePartPathes(srcFile, false);
             ConcatenateFiles(filePartPathes, outFile);
             foreach (string filePath in filePartPathes)
@@ -36,6 +36,8 @@ namespace SplitCompressor
         {
             using (FileStream srcStream = new FileStream(srcFile, FileMode.Open))
             {
+                string directory = Path.GetDirectoryName(dstFile);
+                Directory.CreateDirectory(directory);
                 using (FileStream dstStream = File.Create(dstFile))
                 {
                     using (GZipStream decomprStream = new GZipStream(srcStream, CompressionMode.Decompress))
@@ -50,6 +52,8 @@ namespace SplitCompressor
         {
             using (FileStream srcStream = new FileStream(srcFile, FileMode.Open))
             {
+                string directory = Path.GetDirectoryName(dstFile);
+                Directory.CreateDirectory(directory);
                 using (FileStream dstStream = File.Create(dstFile))
                 {
                     using (GZipStream decomprStream = new GZipStream(srcStream, CompressionMode.Decompress))
