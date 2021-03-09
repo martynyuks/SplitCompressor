@@ -22,6 +22,7 @@ namespace SplitCompressor
         static void Main(string[] args)
         {
             const int MB_SIZE = 1024 * 1024;
+            const int MIN_PART_SIZE = 128 * 1024;
 
             string compressFilePath = null;
             string decompressFilePath = null;
@@ -52,6 +53,10 @@ namespace SplitCompressor
                     {
                         double partSizeD = double.Parse(partSizeStr, NumberStyles.Any, CultureInfo.InvariantCulture);
                         partSize = (int)Math.Round(partSizeD * MB_SIZE);
+                        if (partSize < MIN_PART_SIZE)
+                        {
+                            throw new ArgumentOutOfRangeException("Part size must not be less than 0.125 Mb");
+                        }
                     }
                     compressorSplitter = new CompressorSplitter();
                     compressThread = new Thread(() => compressorSplitter.Run(compressFilePath, outFilePath, partSize));
