@@ -2,7 +2,7 @@
   "profiles": {
     "SplitCompressor": {
       "commandName": "Project",
-      "commandLineArgs": "/compress \"D:\\Documents\\manual.pdf\" /out \"D:\\Downloads\\archive\\manual.pdf.gz\" /partsize 1"
+      "commandLineArgs": "/compress \"D:\\Documents\\manual.pdf\" /out \"D:\\Documents\\archive\\manual.pdf.gz\" /partsize 1"
     }
   }
 }
