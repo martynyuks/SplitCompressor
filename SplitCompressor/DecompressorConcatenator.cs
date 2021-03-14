@@ -10,35 +10,40 @@ namespace SplitCompressor
     {
         public static int PROCESSOR_COUNT = Environment.ProcessorCount;
 
-        public void Run(string srcFile, string outFile)
+        public void Run(string srcFilePath, string dstFilePath)
         {
             _tasks = new List<ArchivePartSubTask>();
             _runnables = new List<Action>();
-            List<string> comprFilePartPathes = FilePartSubs.GetAllFilePartPathes(srcFile, true);
-            foreach (string path in comprFilePartPathes)
+            List<FilePartHeader> filePartHeaders = FilePartHeader.GetPartHeadersInComprFile(srcFilePath);
+            List<long> filePartOffsets = FilePartHeader.GetPartOffsetsInComprFile(filePartHeaders);
+            for (int i = 0; i < filePartOffsets.Count; i++)
             {
-                ArchivePartSubTask task = new DecompressPartSubTask(path, FilePartSubs.FilePathWithoutLastExt(path));
+                ArchivePartSubTask task = new DecompressPartSubTask(srcFilePath,
+                    filePartOffsets[i], filePartHeaders[i].CompressedPartSize,
+                    FilePartSubs.FilePathWithoutLastExt(FilePartPathRegex.ArchivePartPath(
+                        srcFilePath, i, filePartHeaders.Count)));
                 _tasks.Add(task);
                 _runnables.Add(task.Run);
             }
             _runner = new ParallelRunner(_runnables, PROCESSOR_COUNT);
             _runner.Start();
             _runner.WaitCompletion();
-            List<string> filePartPathes = FilePartSubs.GetAllFilePartPathes(srcFile, false);
-            ConcatenateFiles(filePartPathes, outFile);
+            List<string> filePartPathes = FilePartSubs.GetAllFilePartPathes(
+                FilePartSubs.FilePathWithoutLastExt(srcFilePath), false);
+            FileProcessSubs.ConcatenateFiles(filePartPathes, dstFilePath);
             foreach (string filePath in filePartPathes)
             {
                 File.Delete(filePath);
             }
         }
 
-        public static void Decompress(string srcFile, string dstFile)
+        public static void Decompress(string srcFilePath, string dstFilePath)
         {
-            using (FileStream srcStream = new FileStream(srcFile, FileMode.Open))
+            using (FileStream srcStream = new FileStream(srcFilePath, FileMode.Open))
             {
-                string directory = Path.GetDirectoryName(dstFile);
+                string directory = Path.GetDirectoryName(dstFilePath);
                 Directory.CreateDirectory(directory);
-                using (FileStream dstStream = File.Create(dstFile))
+                using (FileStream dstStream = File.Create(dstFilePath))
                 {
                     using (GZipStream decomprStream = new GZipStream(srcStream, CompressionMode.Decompress))
                     {
@@ -48,13 +53,13 @@ namespace SplitCompressor
             }
         }
 
-        public static void DecompressPart(string srcFile, string dstFile)
+        public static void DecompressPart(string srcFilePath, string dstFilePath)
         {
-            using (FileStream srcStream = new FileStream(srcFile, FileMode.Open))
+            using (FileStream srcStream = new FileStream(srcFilePath, FileMode.Open))
             {
-                string directory = Path.GetDirectoryName(dstFile);
+                string directory = Path.GetDirectoryName(dstFilePath);
                 Directory.CreateDirectory(directory);
-                using (FileStream dstStream = File.Create(dstFile))
+                using (FileStream dstStream = File.Create(dstFilePath))
                 {
                     using (GZipStream decomprStream = new GZipStream(srcStream, CompressionMode.Decompress))
                     {
@@ -64,24 +69,24 @@ namespace SplitCompressor
             }
         }
 
-        public static void ConcatenateFiles(List<string> filePathes, string outFilePath)
+        public static void DecompressPart(string srcFilePath, long srcFilePartOffset,
+            long srcFilePartSize, string dstFilePath)
         {
-            const int BUF_SIZE = 1024 * 1024;
-            byte[] buffer = new byte[BUF_SIZE];
-            int bufSizeRead = 0;
-            using (FileStream outFileStream = new FileStream(outFilePath, FileMode.Create))
+            using (FileStream srcStream = new FileStream(srcFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
             {
-                foreach (string filePath in filePathes)
+                byte[] filePartBuf = new byte[srcFilePartSize];
+                srcStream.Seek(srcFilePartOffset, SeekOrigin.Begin);
+                srcStream.Read(filePartBuf);
+                using (MemoryStream filePartStream = new MemoryStream(filePartBuf))
                 {
-                    using (FileStream fileStream = new FileStream(filePath, FileMode.Open))
+                    string directory = Path.GetDirectoryName(dstFilePath);
+                    Directory.CreateDirectory(directory);
+                    using (FileStream dstStream = File.Create(dstFilePath))
                     {
-                        do
+                        using (GZipStream decomprStream = new GZipStream(filePartStream, CompressionMode.Decompress))
                         {
-                            bufSizeRead = fileStream.Read(buffer, 0, BUF_SIZE);
-                            outFileStream.Write(buffer, 0, bufSizeRead);
-                            outFileStream.Flush();
+                            decomprStream.CopyTo(dstStream);
                         }
-                        while (bufSizeRead > 0);
                     }
                 }
             }

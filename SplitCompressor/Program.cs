@@ -13,26 +13,20 @@ namespace SplitCompressor
         //  Примеры аргументов приложения
 
         //  Разделение и сжатие файла
-        //  /compress "D:\Documents\manual.pdf" /out "D:\Documents\archive\manual.pdf.gz" /partsize 0.5
-        //  /compress "D:\Documents\manual.pdf" /out "D:\Documents\archive\manual.pdf.gz" /partsize 1
+        //  /compress "D:\Documents\manual.pdf" "D:\Documents\manual.pdf.gz"
 
         // Распаковка и объединение файла
-        //  /decompress "D:\Documents\archive\manual.pdf" /out "D:\Documents\manual.pdf"
+        //  /decompress "D:\Documents\manual.pdf.gz" "D:\Documents\manual.pdf"
 
         static void Main(string[] args)
         {
             const int MB_SIZE = 1024 * 1024;
-            const int MIN_PART_SIZE = 128 * 1024;
 
-            string compressFilePath = null;
-            string decompressFilePath = null;
-            string outFilePath = null;
-            string partSizeStr = null;
+            List<string> compressFilePathes = null;
+            List<string> decompressFilePathes = null;
             int partSize = MB_SIZE;
-            compressFilePath = GetParameter(args, "/compress");
-            decompressFilePath = GetParameter(args, "/decompress");
-            outFilePath = GetParameter(args, "/out");
-            partSizeStr = GetParameter(args, "/partsize");
+            compressFilePathes = GetParameters(args, "/compress");
+            decompressFilePathes = GetParameters(args, "/decompress");
 
             CompressorSplitter compressorSplitter = null;
             DecompressorConcatenator decompressorConcatenator = null;
@@ -40,26 +34,12 @@ namespace SplitCompressor
             Thread decompressThread = null;
             Thread progressThread = null;
 
-            if (outFilePath == null)
-            {
-                PrintWrongParamsMessage();
-                return;
-            }
-            if (compressFilePath != null && decompressFilePath == null)
+            if (compressFilePathes != null && decompressFilePathes == null)
             {
                 try
                 {
-                    if (partSizeStr != null)
-                    {
-                        double partSizeD = double.Parse(partSizeStr, NumberStyles.Any, CultureInfo.InvariantCulture);
-                        partSize = (int)Math.Round(partSizeD * MB_SIZE);
-                        if (partSize < MIN_PART_SIZE)
-                        {
-                            throw new ArgumentOutOfRangeException("Part size must not be less than 0.125 Mb");
-                        }
-                    }
                     compressorSplitter = new CompressorSplitter();
-                    compressThread = new Thread(() => compressorSplitter.Run(compressFilePath, outFilePath, partSize));
+                    compressThread = new Thread(() => compressorSplitter.Run(compressFilePathes[0], compressFilePathes[1], partSize));
                     compressThread.Start();
                     progressThread = RunProgressThread(compressorSplitter);
                 }
@@ -69,12 +49,12 @@ namespace SplitCompressor
                     return;
                 }
             }
-            else if (decompressFilePath != null && compressFilePath == null)
+            else if (decompressFilePathes != null && compressFilePathes == null)
             {
                 try
                 {
                     decompressorConcatenator = new DecompressorConcatenator();
-                    decompressThread = new Thread(() => decompressorConcatenator.Run(decompressFilePath, outFilePath));
+                    decompressThread = new Thread(() => decompressorConcatenator.Run(decompressFilePathes[0], decompressFilePathes[1]));
                     decompressThread.Start();
                     progressThread = RunProgressThread(decompressorConcatenator);
                 }
@@ -128,6 +108,33 @@ namespace SplitCompressor
             }
         }
 
+        private static List<string> GetParameters(string[] args, string paramName)
+        {
+            List<string> parameters = new List<string>();
+            int argIndex = Array.FindIndex(args, arg => arg.Equals(paramName));
+            if (argIndex >= 0)
+            {
+                argIndex++;
+                while (argIndex < args.Length && !args[argIndex].StartsWith("/"))
+                {
+                    parameters.Add(args[argIndex]);
+                    argIndex++;
+                }
+                if (parameters.Count > 0)
+                {
+                    return parameters;
+                }
+                else
+                {
+                    return null;
+                }
+            }
+            else
+            {
+                return null;
+            }
+        }
+
         private static Thread RunProgressThread(ParallelTask parallelTask)
         {
             Thread thread = new Thread(() =>
@@ -157,9 +164,8 @@ namespace SplitCompressor
         {
             Console.WriteLine("Wrong parameters passed.");
             Console.Write("Parameter usage:\r\n" +
-                "Compression: /compress <src_file_path> /out <dest_file_path> /partsize <size_Mb>\r\n" +
-                "Decompression: /decompress <origin_file_path> /out <out_file_path>\r\n" +
-                "<origin_file_path> is passed without archive extension and part number index\r\n");
+                "Compression: /compress <src_file_path> <dest_file_path>\r\n" +
+                "Decompression: /decompress <src_file_path> <dest_file_path>\r\n");
             Console.WriteLine("Press any key to exit...");
             Console.ReadLine();
         }

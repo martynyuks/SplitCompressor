@@ -8,17 +8,11 @@ namespace SplitCompressor
     {
         protected string _srcFile;
         protected string _dstFile;
-        protected long _partIndex;
-        protected long _partCount;
-        protected int _partSize;
 
-        protected ArchivePartSubTask(string srcFile, string dstFile, long partIndex, long partCount, int partSize)
+        protected ArchivePartSubTask(string srcFile, string dstFile)
         {
             _srcFile = srcFile;
             _dstFile = dstFile;
-            _partIndex = partIndex;
-            _partCount = partCount;
-            _partSize = partSize;
         }
 
         public abstract void Run();

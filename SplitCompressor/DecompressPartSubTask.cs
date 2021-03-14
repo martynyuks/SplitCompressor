@@ -6,14 +6,19 @@ namespace SplitCompressor
 {
     public class DecompressPartSubTask : ArchivePartSubTask
     {
-        public DecompressPartSubTask(string srcFile, string dstFile) :
-            base(srcFile, dstFile, -1, -1, -1)
+        private long _srcFileOffset;
+        private long _srcFileSize;
+
+        public DecompressPartSubTask(string srcFile, long srcFileOffset, long srcFileSize, string dstFile) :
+            base(srcFile, dstFile)
         {
+            _srcFileOffset = srcFileOffset;
+            _srcFileSize = srcFileSize;
         }
 
         public override void Run()
         {
-            DecompressorConcatenator.DecompressPart(_srcFile, _dstFile);
+            DecompressorConcatenator.DecompressPart(_srcFile, _srcFileOffset, _srcFileSize, _dstFile);
         }
     }
 }
