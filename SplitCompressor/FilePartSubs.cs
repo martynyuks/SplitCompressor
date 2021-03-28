@@ -14,7 +14,7 @@ namespace SplitCompressor
             {
                 long fileSize = stream.Length;
                 long partCount = fileSize / partSize;
-                if (fileSize % partSize > 0)
+                if (fileSize % partSize > 0 || fileSize == 0)
                 {
                     partCount++;
                 }

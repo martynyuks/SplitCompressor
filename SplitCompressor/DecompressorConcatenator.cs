@@ -1,40 +1,80 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Text;
+using System.Threading;
 using System.IO;
 using System.IO.Compression;
 
 namespace SplitCompressor
 {
-    public class DecompressorConcatenator : ParallelTask
+    public class DecompressorConcatenator : ArchiveParallelProcessor
     {
-        public static int PROCESSOR_COUNT = Environment.ProcessorCount;
+        private long _dstFileSize;
+        private long _srcFilePartLargestSize;
 
-        public void Run(string srcFilePath, string dstFilePath)
+        public DecompressorConcatenator(string srcFilePath, string dstFilePath, int processorCount)
+            : base(srcFilePath, dstFilePath, processorCount)
         {
-            _tasks = new List<ArchivePartSubTask>();
-            _runnables = new List<Action>();
-            List<FilePartHeader> filePartHeaders = FilePartHeader.GetPartHeadersInComprFile(srcFilePath);
-            List<long> filePartOffsets = FilePartHeader.GetPartOffsetsInComprFile(filePartHeaders);
-            for (int i = 0; i < filePartOffsets.Count; i++)
+        }
+
+        public override void Start()
+        {
+            List<FilePartHeader> srcPartHeaders = FilePartHeader.GetPartHeadersInComprFile(_srcFilePath);
+            List<long> srcPartOffsets = FilePartHeader.GetPartOffsetsInComprFile(srcPartHeaders);
+            List<long> dstPartOffsets = FilePartHeader.GetPartOffsetsInOriginFile(srcPartHeaders);
+            _srcFilePartLargestSize = FilePartHeader.GetLargestPartSizeInComprFile(srcPartHeaders);
+            for (int partIndex = 0; partIndex < srcPartOffsets.Count; partIndex++)
             {
-                ArchivePartSubTask task = new DecompressPartSubTask(srcFilePath,
-                    filePartOffsets[i], filePartHeaders[i].CompressedPartSize,
-                    FilePartSubs.FilePathWithoutLastExt(FilePartPathRegex.ArchivePartPath(
-                        srcFilePath, i, filePartHeaders.Count)));
+                var task = new DecompressPartSubTask(_srcFilePath,
+                    srcPartOffsets[partIndex], srcPartHeaders[partIndex].CompressedPartSize,
+                    _dstFilePath, dstPartOffsets[partIndex], srcPartHeaders[partIndex].OriginalPartSize, partIndex);
                 _tasks.Add(task);
-                _runnables.Add(task.Run);
+                _tasksQueue.Enqueue(task);
             }
-            _runner = new ParallelRunner(_runnables, PROCESSOR_COUNT);
-            _runner.Start();
-            _runner.WaitCompletion();
-            List<string> filePartPathes = FilePartSubs.GetAllFilePartPathes(
-                FilePartSubs.FilePathWithoutLastExt(srcFilePath), false);
-            FileProcessSubs.ConcatenateFiles(filePartPathes, dstFilePath);
-            foreach (string filePath in filePartPathes)
+            for (int i = 0; i < _processorCount; i++)
             {
-                File.Delete(filePath);
+                Thread thread = new Thread(() =>
+                {
+                    MemoryStream bufferStream = new MemoryStream();
+                    byte[] buffer = new byte[_srcFilePartLargestSize];
+                    MemoryStream comprBufferStream = new MemoryStream();
+                    while (_completedCount < _totalCount)
+                    {
+                        _tasksMutex.WaitOne();
+                        var task = _tasksQueue.Count > 0 ? _tasksQueue.Dequeue() : null;
+                        _tasksMutex.ReleaseMutex();
+                        if (task != null)
+                        {
+                            (task as DecompressPartSubTask).SetAuxiliaryBuffers(bufferStream, buffer, comprBufferStream);
+                            task.Run();
+                            while (_completedCount < task.PartIndex)
+                            { }
+                            _tasksCompleteMutex.WaitOne();
+                            task.Complete();
+                            _tasksCompleteMutex.ReleaseMutex();
+                            _completedCount++;
+                        }
+                    }
+                    bufferStream.Close();
+                    comprBufferStream.Close();
+                });
+                _threads.Add(thread);
             }
+            _dstFileSize = FilePartHeader.GetTotalOriginalSize(srcPartHeaders);
+            _completedCount = 0;
+            _totalCount = _tasks.Count;
+
+            FileProcessSubs.CreateEmptyFile(_dstFilePath);
+
+            foreach (Thread thread in _threads)
+            {
+                thread.Start();
+            }
+        }
+
+        public void Run()
+        {
+            Start();
+            WaitCompletion();
         }
 
         public static void Decompress(string srcFilePath, string dstFilePath)
@@ -88,6 +128,30 @@ namespace SplitCompressor
                             decomprStream.CopyTo(dstStream);
                         }
                     }
+                }
+            }
+        }
+
+        public static void DecompressPartInMemory(string srcFilePath, long srcFilePartOffset, long srcFilePartSize, long dstPartSize,
+            ref MemoryStream bufferStream, ref byte[] buffer, ref MemoryStream comprBufferStream)
+        {
+            if (buffer.Length < Math.Max(dstPartSize, srcFilePartSize))
+            {
+                buffer = new byte[Math.Max(dstPartSize, srcFilePartSize)];
+            }
+            using (FileStream srcStream = new FileStream(srcFilePath, FileMode.Open, FileAccess.Read, FileShare.Read))
+            {
+                srcStream.Seek(srcFilePartOffset, SeekOrigin.Begin);
+                srcStream.Read(buffer, 0, (int)srcFilePartSize);
+
+                FileProcessSubs.ClearStream(comprBufferStream);
+                comprBufferStream.Write(buffer, 0, (int)srcFilePartSize);
+                comprBufferStream.Seek(0, SeekOrigin.Begin);
+
+                FileProcessSubs.ClearStream(bufferStream);
+                using (GZipStream decomprStream = new GZipStream(comprBufferStream, CompressionMode.Decompress, true))
+                {
+                    decomprStream.CopyTo(bufferStream);
                 }
             }
         }

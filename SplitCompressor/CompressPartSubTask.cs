@@ -1,26 +1,30 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Text;
+using System.IO;
 
 namespace SplitCompressor
 {
     public class CompressPartSubTask : ArchivePartSubTask
     {
-        protected long _partIndex;
-        protected long _partCount;
-        protected int _partSize;
+        private int _partSize;
 
-        public CompressPartSubTask(string srcFile, string dstFile, long partIndex, long partCount, int partSize) :
-            base(srcFile, dstFile)
+        public CompressPartSubTask(string srcFilePath, string dstFilePath, int partSize, long partIndex) :
+            base(srcFilePath, dstFilePath)
         {
             _partIndex = partIndex;
-            _partCount = partCount;
             _partSize = partSize;
         }
 
         public override void Run()
         {
-            CompressorSplitter.CompressPart(_srcFile, _dstFile, _partIndex, _partCount, _partSize);
+            CompressorSplitter.CompressPartInMemory(_srcFilePath, _partIndex, _partSize,
+                ref _bufferStream, ref _buffer);
+        }
+
+        public override void Complete()
+        {
+            FileProcessSubs.AppendStreamBytesToFile(_dstFilePath, _bufferStream);
         }
     }
 }

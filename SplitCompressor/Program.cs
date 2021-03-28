@@ -38,10 +38,15 @@ namespace SplitCompressor
             {
                 try
                 {
-                    compressorSplitter = new CompressorSplitter();
-                    compressThread = new Thread(() => compressorSplitter.Run(compressFilePathes[0], compressFilePathes[1], partSize));
+                    if (!File.Exists(compressFilePathes[0]))
+                    {
+                        throw new FileNotFoundException(FormattableString.Invariant($"File not found: \"{compressFilePathes[0]}\""));
+                    }
+                    compressorSplitter = new CompressorSplitter(compressFilePathes[0], compressFilePathes[1], partSize,
+                        Environment.ProcessorCount);
+                    compressThread = new Thread(() => compressorSplitter.Run());
                     compressThread.Start();
-                    progressThread = RunProgressThread(compressorSplitter);
+                    progressThread = RunProgressThread(compressorSplitter, true);
                 }
                 catch (Exception e)
                 {
@@ -53,10 +58,15 @@ namespace SplitCompressor
             {
                 try
                 {
-                    decompressorConcatenator = new DecompressorConcatenator();
-                    decompressThread = new Thread(() => decompressorConcatenator.Run(decompressFilePathes[0], decompressFilePathes[1]));
+                    if (!File.Exists(decompressFilePathes[0]))
+                    {
+                        throw new FileNotFoundException(FormattableString.Invariant($"File not found: \"{decompressFilePathes[0]}\""));
+                    }
+                    decompressorConcatenator = new DecompressorConcatenator(decompressFilePathes[0], decompressFilePathes[1],
+                        Environment.ProcessorCount);
+                    decompressThread = new Thread(() => decompressorConcatenator.Run());
                     decompressThread.Start();
-                    progressThread = RunProgressThread(decompressorConcatenator);
+                    progressThread = RunProgressThread(decompressorConcatenator, false);
                 }
                 catch (Exception e)
                 {
@@ -73,7 +83,6 @@ namespace SplitCompressor
             {
                 progressThread.Join();
             }
-            Console.WriteLine("Waiting for completion of final operations...");
             if (compressThread != null)
             {
                 compressThread.Join();
@@ -82,7 +91,6 @@ namespace SplitCompressor
             {
                 decompressThread.Join();
             }
-            Console.WriteLine("Completed");
             Console.WriteLine("Press any key to exit...");
             Console.ReadLine();
         }
@@ -135,29 +143,43 @@ namespace SplitCompressor
             }
         }
 
-        private static Thread RunProgressThread(ParallelTask parallelTask)
+        private static Thread RunProgressThread(ArchiveParallelProcessor parallelProcessor, bool compressOrDecompress)
         {
             Thread thread = new Thread(() =>
             {
-                Console.WriteLine("Processing...");
-                int completed = parallelTask.CompletedCount;
-                int total = parallelTask.TotalCount;
-                Console.Write($"\rProcessed {completed} of {total} parts                                        ");
-                while (!parallelTask.IsCompleted)
+                string processOperation = compressOrDecompress ? "Compressing" : "Decompressing";
+                string processProgress = compressOrDecompress ? "Compressed" : "Decompressed";
+                Console.Write(
+                    FormattableString.Invariant($"{processOperation}...\r\n") +
+                    FormattableString.Invariant($"Source file: \"{parallelProcessor.SrcFilePath}\"\r\n") +
+                    FormattableString.Invariant($"Destination file: \"{parallelProcessor.DstFilePath}\"\r\n"));
+                double progress = GetProgress(parallelProcessor.CompletedCount, parallelProcessor.TotalCount);
+                Console.Write(FormattableString.Invariant($"\r{processProgress} {progress:F0} %                                        "));
+                while (!parallelProcessor.IsCompleted)
                 {
-                    completed = parallelTask.CompletedCount;
-                    total = parallelTask.TotalCount;
-                    Console.Write($"\rProcessed {completed} of {total} parts                                        ");
+                    progress = GetProgress(parallelProcessor.CompletedCount, parallelProcessor.TotalCount);
+                    Console.Write(FormattableString.Invariant($"\r{processProgress} {progress:F0} %                                        "));
                     Thread.Sleep(200);
                 }
-                completed = parallelTask.CompletedCount;
-                total = parallelTask.TotalCount;
-                Console.Write($"\rProcessed {completed} of {total} parts                                        ");
+                progress = GetProgress(parallelProcessor.CompletedCount, parallelProcessor.TotalCount);
+                Console.Write(FormattableString.Invariant($"\r{processProgress} {progress:F0} %                                        "));
                 Console.WriteLine();
-                Console.WriteLine("Processing completed.");
+                Console.WriteLine(FormattableString.Invariant($"{processOperation} completed."));
             });
             thread.Start();
             return thread;
+        }
+
+        private static double GetProgress(int completed, int total)
+        {
+            if (total > 0)
+            {
+                return (double)completed / total * 100.0;
+            }
+            else
+            {
+                return 0.0;
+            }
         }
 
         private static void PrintWrongParamsMessage()

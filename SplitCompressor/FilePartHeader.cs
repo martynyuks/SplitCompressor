@@ -70,6 +70,44 @@ namespace SplitCompressor
             return outOffset;
         }
 
+        public static List<long> GetPartOffsetsInOriginFile(List<FilePartHeader> headers)
+        {
+            List<long> offsets = new List<long>();
+            long offset = 0;
+            for (int i = 0; i < headers.Count; i++)
+            {
+                offsets.Add(offset);
+                offset += headers[i].OriginalPartSize;
+            }
+            return offsets;
+        }
+
+        public static long GetLargestPartSizeInComprFile(List<FilePartHeader> headers)
+        {
+            long size = 0;
+            foreach (FilePartHeader header in headers)
+            {
+                if (header.CompressedPartSize > size)
+                {
+                    size = header.CompressedPartSize;
+                }
+            }
+            return size;
+        }
+
+        public static long GetLargestPartSizeInOriginFile(List<FilePartHeader> headers)
+        {
+            long size = 0;
+            foreach (FilePartHeader header in headers)
+            {
+                if (header.OriginalPartSize > size)
+                {
+                    size = header.OriginalPartSize;
+                }
+            }
+            return size;
+        }
+
         public static long GetTotalOriginalSize(List<FilePartHeader> headers)
         {
             long totalSize = 0;

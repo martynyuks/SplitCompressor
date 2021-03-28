@@ -29,5 +29,66 @@ namespace SplitCompressor
             }
         }
 
+        public static void ClearStream(Stream stream)
+        {
+            stream.Position = 0;
+            stream.SetLength(0);
+            stream.Seek(0, SeekOrigin.Begin);
+        }
+
+        public static void CreateEmptyFile(string filePath)
+        {
+            string directory = Path.GetDirectoryName(filePath);
+            Directory.CreateDirectory(directory);
+            using (FileStream fileStream = new FileStream(filePath, FileMode.Create, FileAccess.ReadWrite, FileShare.ReadWrite))
+            {
+            }
+        }
+        
+        public static void CreateDummyFile(string filePath, long fileSize, int bufSize = 1024 * 1024)
+        {
+            byte[] dummyBuf = new byte[bufSize];
+            int bytesToWrite;
+            long posIndex = 0;
+            string directory = Path.GetDirectoryName(filePath);
+            Directory.CreateDirectory(directory);
+            using (FileStream fileStream = new FileStream(filePath, FileMode.Create))
+            {
+                while (posIndex < fileSize)
+                {
+                    if (posIndex + bufSize <= fileSize)
+                    {
+                        bytesToWrite = bufSize;
+                    }
+                    else
+                    {
+                        bytesToWrite = (int)(fileSize - posIndex);
+                    }
+                    fileStream.Write(dummyBuf, 0, bytesToWrite);
+                    posIndex += bytesToWrite;
+                }
+            }
+        }
+        
+        public static void AppendStreamBytesToFile(string filePath, Stream stream)
+        {
+            using (FileStream fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Write, FileShare.Write))
+            {
+                fileStream.Seek(0, SeekOrigin.End);
+                stream.Seek(0, SeekOrigin.Begin);
+                stream.CopyTo(fileStream);
+            }
+        }
+
+        public static void WriteStreamBytesIntoFile(string filePath, Stream stream, long offset)
+        {
+            using (FileStream fileStream = new FileStream(filePath, FileMode.Open, FileAccess.Write, FileShare.Write))
+            {
+                fileStream.Seek(offset, SeekOrigin.Begin);
+                stream.Seek(0, SeekOrigin.Begin);
+                stream.CopyTo(fileStream);
+            }
+        }
+
     }
 }
